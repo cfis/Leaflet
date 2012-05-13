@@ -206,10 +206,8 @@ L.TileLayer = L.Class.extend({
 
 		var fragment = document.createDocumentFragment();
 
-		this._tilesToLoad = queue.length;
-
 		var k, len;
-		for (k = 0, len = this._tilesToLoad; k < len; k++) {
+		for (k = 0, len = queue.length; k < len; k++) {
 			this._addTile(queue[k], fragment);
 		}
 
@@ -261,12 +259,10 @@ L.TileLayer = L.Class.extend({
 			if (!this.options.noWrap) {
 				tilePoint.x = ((tilePoint.x % limit) + limit) % limit;
 			} else if (tilePoint.x < 0 || tilePoint.x >= limit) {
-				this._tilesToLoad--;
 				return;
 			}
 
 			if (tilePoint.y < 0 || tilePoint.y >= limit) {
-				this._tilesToLoad--;
 				return;
 			}
 		}
@@ -343,6 +339,7 @@ L.TileLayer = L.Class.extend({
 	},
 
 	_loadTile: function (tile, tilePoint, zoom) {
+        tile._loading = true;
 		tile._layer  = this;
 		tile.onload  = this._tileOnLoad;
 		tile.onerror = this._tileOnError;
@@ -350,11 +347,21 @@ L.TileLayer = L.Class.extend({
 		tile.src     = this.getTileUrl(tilePoint, zoom);
 	},
 
-    _tileLoaded: function () {
-        this._tilesToLoad--;
-        if (!this._tilesToLoad) {
-            this.fire('load');
+    _tileLoaded: function (tile) {
+        tile._loading = false;
+        var tiles = this._tiles;
+
+        // Are any tiles still loading?
+        for (key in tiles) {
+            if (tiles.hasOwnProperty(key)) {
+                var tile = tiles[key];
+                if (tile._loading)
+                  return;
+            }
         }
+
+        // All tiles are now loaded
+        this.fire('load');
     },
 
 	_tileOnLoad: function (e) {
@@ -367,7 +374,7 @@ L.TileLayer = L.Class.extend({
 			url: this.src
 		});
 
-        layer._tileLoaded();
+        layer._tileLoaded(this);
 	},
 
 	_tileOnError: function (e) {
@@ -383,6 +390,6 @@ L.TileLayer = L.Class.extend({
 			this.src = newUrl;
 		}
 
-        layer._tileLoaded();
+        layer._tileLoaded(this);
     }
 });
