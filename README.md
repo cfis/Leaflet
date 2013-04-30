@@ -1,32 +1,31 @@
-<img src="http://leaflet.cloudmade.com/docs/images/logo.png" alt="Leaflet" />
+<img src="http://leafletjs.com/docs/images/logo.png" alt="Leaflet" />
 
-Leaflet is a modern, lightweight BSD-licensed JavaScript library for making tile-based interactive maps for both desktop and mobile web browsers, developed by [CloudMade](http://cloudmade.com) to form the core of its next generation JavaScript API.
+ATTENTION: the repository has moved to a new location:
+https://github.com/Leaflet/Leaflet
 
-It is built from the ground up to work efficiently and smoothly on both platforms, utilizing cutting-edge technologies included in HTML5. Its top priorities are usability, performance and small size, [A-grade](http://developer.yahoo.com/yui/articles/gbs/) browser support, flexibility and easy to use API. The OOP-based code of the library is designed to be modular, extensible and very easy to understand.
+Leaflet is a modern open-source JavaScript library for **mobile-friendly interactive maps**.
+It is developed by [Vladimir Agafonkin][] with a team of dedicated [contributors][].
+Weighing just about 27 KB of gzipped JS code, it has all the [features][] most developers ever need for online maps.
 
-Check out the website for more information: [leaflet.cloudmade.com](http://leaflet.cloudmade.com)
+Leaflet is designed with *simplicity*, *performance* and *usability* in mind.
+It works efficiently across all major desktop and mobile platforms out of the box,
+taking advantage of HTML5 and CSS3 on modern browsers while being accessible on older ones too.
+It can also be extended with many [plugins][],
+has a beautiful, easy to use and [well-documented][] API
+and a simple, readable [source code][] that is a joy to [contribute][] to.
 
-## Contributing to Leaflet
-Let's make the best open-source library for maps that can possibly exist! 
+For more information, check out the [official website][].
 
-Contributing is simple: make the changes in your fork, make sure that Leaflet builds successfully (see below) and then create a pull request to [Vladimir Agafonkin](http://github.com/mourner) (Leaflet maintainer). Updates to Leaflet [documentation](http://leaflet.cloudmade.com/reference.html) and [examples](http://leaflet.cloudmade.com/examples.html) (located in the `gh-pages` branch) are really appreciated too.
+We're happy to meet new contributors.
+If you want to **get involved** with Leaflet development, check out the [contribution guide][contribute].
+Let's make the best open-source library for maps that can possibly exist!
 
-Here's [a list of the awesome people](http://github.com/CloudMade/Leaflet/contributors) that joined us already. Looking forward to _your_ contributions!
-
-## Building Leaflet
-Leaflet build system is powered by the Node.js platform and Jake, JSHint and UglifyJS libraries, which install easily and work well across all major platforms. Here are the steps to install it:
-
- 1. [Download and install Node](http://nodejs.org)
- 2. Run the following commands in the command line:
- 
- ```
- npm install -g jake
- npm install -g jshint
- npm install -g uglify-js
- ```
-
-Now that you have everything installed, run `jake` inside the Leaflet directory. This will check Leaflet source files for JavaScript errors and inconsistencies, and then combine and compress it to the `dist` folder.
-
-To make a custom build of the library with only the things you need, use the build helper (`build/build.html`) to choose the components (it figures out dependencies for you) and then run the command generated with it.
-
-If you add any new files to the Leaflet source, make sure to also add them to `build/deps.js` so that the build system knows about them. Happy coding!
+ [Vladimir Agafonkin]: http://agafonkin.com/en
+ [contributors]: https://github.com/Leaflet/Leaflet/graphs/contributors
+ [features]: http://leafletjs.com/features.html
+ [plugins]: http://leafletjs.com/plugins.html
+ [well-documented]: http://leafletjs.com/reference.html "Leaflet API reference"
+ [source code]: https://github.com/Leaflet/Leaflet "Leaflet GitHub repository"
+ [hosted on GitHub]: http://github.com/Leaflet/Leaflet
+ [contribute]: https://github.com/Leaflet/Leaflet/blob/master/CONTRIBUTING.md "A guide to contributing to Leaflet"
+ [official website]: http://leafletjs.com

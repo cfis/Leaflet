@@ -15,6 +15,7 @@ var deps = {
 		      'geo/projection/Projection.SphericalMercator.js',
 		      'geo/projection/Projection.LonLat.js',
 		      'geo/crs/CRS.js',
+		      'geo/crs/CRS.Simple.js',
 		      'geo/crs/CRS.EPSG3857.js',
 		      'geo/crs/CRS.EPSG4326.js',
 		      'map/Map.js'],
@@ -53,12 +54,22 @@ var deps = {
 	},
 
 	Marker: {
-		src: ['layer/marker/Icon.js', 'layer/marker/Marker.js'],
+		src: ['layer/marker/Icon.js',
+		      'layer/marker/Icon.Default.js',
+		      'layer/marker/Marker.js'],
 		desc: 'Markers to put on the map.'
 	},
 
+	DivIcon: {
+		src: ['layer/marker/DivIcon.js'],
+		deps: ['Marker'],
+		desc: 'Lightweight div-based icon for markers.'
+	},
+
 	Popup: {
-		src: ['layer/Popup.js', 'layer/marker/Marker.Popup.js', 'map/ext/Map.Popup.js'],
+		src: ['layer/Popup.js',
+		      'layer/marker/Marker.Popup.js',
+		      'map/ext/Map.Popup.js'],
 		deps: ['Marker'],
 		desc: 'Used to display the map popup (used mostly for binding HTML data to markers and paths on click).'
 	},
@@ -76,7 +87,9 @@ var deps = {
 
 
 	Path: {
-		src: ['layer/vector/Path.js', 'layer/vector/Path.SVG.js', 'layer/vector/Path.Popup.js'],
+		src: ['layer/vector/Path.js',
+		      'layer/vector/Path.SVG.js',
+		      'layer/vector/Path.Popup.js'],
 		desc: 'Vector rendering core (SVG-powered), enables overlaying the map with SVG paths.',
 		heading: 'Vector layers'
 	},
@@ -86,14 +99,22 @@ var deps = {
 		desc: 'VML fallback for vector rendering core (IE 6-8).'
 	},
 
+	PathCanvas: {
+		src: ['layer/vector/canvas/Path.Canvas.js'],
+		deps: ['Path', 'Polyline', 'Polygon', 'Circle'],
+		desc: 'Canvas fallback for vector rendering core (makes it work on Android 2+).'
+	},
+
 	Polyline: {
-		src: ['geometry/LineUtil.js', 'layer/vector/Polyline.js'],
+		src: ['geometry/LineUtil.js',
+		      'layer/vector/Polyline.js'],
 		deps: ['Path'],
 		desc: 'Polyline overlays.'
 	},
 
 	Polygon: {
-		src: ['geometry/PolyUtil.js', 'layer/vector/Polygon.js'],
+		src: ['geometry/PolyUtil.js',
+		      'layer/vector/Polygon.js'],
 		deps: ['Polyline'],
 		desc: 'Polygon overlays.'
 	},
@@ -102,6 +123,12 @@ var deps = {
 		src: ['layer/vector/MultiPoly.js'],
 		deps: ['FeatureGroup', 'Polyline', 'Polygon'],
 		desc: 'MultiPolygon and MultyPolyline layers.'
+	},
+
+	Rectangle: {
+		src: ['layer/vector/Rectangle.js'],
+		deps: ['Polygon'],
+		desc: ['Rectangle overlays.']
 	},
 
 	Circle: {
@@ -116,13 +143,12 @@ var deps = {
 		desc: 'Circle overlays with a constant pixel radius.'
 	},
 
-	PathCanvas: {
-		src: ['layer/vector/canvas/Path.Canvas.js',
-		      'layer/vector/canvas/Polyline.Canvas.js',
+	VectorsCanvas: {
+		src: ['layer/vector/canvas/Polyline.Canvas.js',
 		      'layer/vector/canvas/Polygon.Canvas.js',
 		      'layer/vector/canvas/Circle.Canvas.js'],
-		deps: ['Path', 'Polyline', 'Polygon', 'Circle'],
-		desc: 'Canvas fallback for vector layers (makes them work on Android 2+).'
+		deps: ['PathCanvas', 'Polyline', 'Polygon', 'Circle'],
+		desc: 'Canvas fallback for vector layers (polygons, polylines, circles)'
 	},
 
 	GeoJSON: {
@@ -152,10 +178,11 @@ var deps = {
 	TouchZoom: {
 		src: ['dom/DomEvent.js',
 		      'dom/DomEvent.DoubleTap.js',
+		      'dom/DomEvent.MsTouch.js',
 		      'core/Handler.js',
 		      'map/handler/Map.TouchZoom.js'],
 		deps: ['MapAnimationZoom'],
-		desc: 'Enables smooth touch zooming on iOS and double tap on iOS/Android.'
+		desc: 'Enables smooth touch zooming on iOS and IE10 and double tap on iOS/IE10/Android.'
 	},
 
 	BoxZoom: {
@@ -163,9 +190,21 @@ var deps = {
 		desc: 'Enables zooming to bounding box by shift-dragging the map.'
 	},
 
+	Keyboard: {
+		src: ['map/handler/Map.Keyboard.js'],
+		desc: 'Enables keyboard pan/zoom when the map is focused.'
+	},
+
 	MarkerDrag: {
 		src: ['layer/marker/Marker.Drag.js'],
+		deps: ['Marker'],
 		desc: 'Makes markers draggable (by mouse or touch).'
+	},
+
+	PolyEdit: {
+		src: ['layer/vector/Polyline.Edit.js'],
+		deps: ['Polyline', 'DivIcon'],
+		desc: 'Polyline and polygon editing.'
 	},
 
 
@@ -184,6 +223,13 @@ var deps = {
 		desc: 'Attribution control.'
 	},
 
+	ControlScale: {
+		src: ['control/Control.js',
+		      'map/ext/Map.Control.js',
+		      'control/Control.Scale.js'],
+		desc: 'Scale control.'
+	},
+
 	ControlLayers: {
 		src: ['control/Control.js',
 		      'map/ext/Map.Control.js',
@@ -192,32 +238,27 @@ var deps = {
 	},
 
 
-	AnimationNative: {
-		src: ['dom/DomEvent.js',
-		      'dom/transition/Transition.js',
-		      'dom/transition/Transition.Native.js'],
-		desc: 'Animation core that uses CSS3 Transitions (for powering pan & zoom animations). Works on mobile webkit-powered browsers and some modern desktop browsers.',
-		heading: 'Visual effects'
+	AnimationPan: {
+		src: [
+			'dom/DomEvent.js',
+			'dom/PosAnimation.js',
+			'map/anim/Map.PanAnimation.js'
+			],
+		deps: ['AnimationPan'],
+		desc: 'Core panning animation support.'
 	},
 
 	AnimationTimer: {
-		src: ['dom/transition/Transition.Timer.js'],
-		deps: ['AnimationNative'],
-		desc: 'Timer-based animation fallback for browsers that don\'t support CSS3 transitions.'
-	},
-
-	AnimationPan: {
-		src: ['map/anim/Map.PanAnimation.js'],
+		src: ['dom/PosAnimation.Timer.js'],
 		deps: ['AnimationPan'],
-		desc: 'Panning animation. Can use both native and timer-based animation.'
+		desc: 'Timer-based pan animation fallback for browsers that don\'t support CSS3 transitions.'
 	},
 
 	AnimationZoom: {
 		src: ['map/anim/Map.ZoomAnimation.js'],
-		deps: ['AnimationPan', 'AnimationNative'],
-		desc: 'Smooth zooming animation. So far it works only on browsers that support CSS3 Transitions.'
+		deps: ['AnimationPan'],
+		desc: 'Smooth zooming animation. Works only on browsers that support CSS3 Transitions.'
 	},
-
 
 	Geolocation: {
 		src: ['map/ext/Map.Geolocation.js'],

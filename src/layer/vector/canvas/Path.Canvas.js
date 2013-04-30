@@ -13,8 +13,47 @@ L.Path = (L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? L.Path :
 		SVG: false
 	},
 
-	options: {
-		updateOnMoveEnd: true
+	redraw: function () {
+		if (this._map) {
+			this.projectLatlngs();
+			this._requestUpdate();
+		}
+		return this;
+	},
+
+	setStyle: function (style) {
+		L.setOptions(this, style);
+
+		if (this._map) {
+			this._updateStyle();
+			this._requestUpdate();
+		}
+		return this;
+	},
+
+	onRemove: function (map) {
+		map
+		    .off('viewreset', this.projectLatlngs, this)
+		    .off('moveend', this._updatePath, this);
+
+		if (this.options.clickable) {
+			this._map.off('click', this._onClick, this);
+		}
+
+		this._requestUpdate();
+
+		this._map = null;
+	},
+
+	_requestUpdate: function () {
+		if (this._map && !L.Path._updateRequest) {
+			L.Path._updateRequest = L.Util.requestAnimFrame(this._fireMapMoveEnd, this._map);
+		}
+	},
+
+	_fireMapMoveEnd: function () {
+		L.Path._updateRequest = null;
+		this.fire('moveend');
 	},
 
 	_initElements: function () {
@@ -23,12 +62,14 @@ L.Path = (L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? L.Path :
 	},
 
 	_updateStyle: function () {
-		if (this.options.stroke) {
-			this._ctx.lineWidth = this.options.weight;
-			this._ctx.strokeStyle = this.options.color;
+		var options = this.options;
+
+		if (options.stroke) {
+			this._ctx.lineWidth = options.weight;
+			this._ctx.strokeStyle = options.color;
 		}
-		if (this.options.fill) {
-			this._ctx.fillStyle = this.options.fillColor || this.options.color;
+		if (options.fill) {
+			this._ctx.fillStyle = options.fillColor || options.color;
 		}
 	},
 
@@ -56,34 +97,26 @@ L.Path = (L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? L.Path :
 	},
 
 	_updatePath: function () {
-		if (this._checkIfEmpty()) {
-			return;
-		}
+		if (this._checkIfEmpty()) { return; }
+
+		var ctx = this._ctx,
+		    options = this.options;
 
 		this._drawPath();
-
-		this._ctx.save();
-
+		ctx.save();
 		this._updateStyle();
 
-		var opacity = this.options.opacity,
-			fillOpacity = this.options.fillOpacity;
-
-		if (this.options.fill) {
-			if (fillOpacity < 1) {
-				this._ctx.globalAlpha = fillOpacity;
-			}
-			this._ctx.fill();
+		if (options.fill) {
+			ctx.globalAlpha = options.fillOpacity;
+			ctx.fill();
 		}
 
-		if (this.options.stroke) {
-			if (opacity < 1) {
-				this._ctx.globalAlpha = opacity;
-			}
-			this._ctx.stroke();
+		if (options.stroke) {
+			ctx.globalAlpha = options.opacity;
+			ctx.stroke();
 		}
 
-		this._ctx.restore();
+		ctx.restore();
 
 		// TODO optimization: 1 fill/stroke for all features with equal style instead of 1 for each feature
 	},
@@ -98,21 +131,20 @@ L.Path = (L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? L.Path :
 
 	_onClick: function (e) {
 		if (this._containsPoint(e.layerPoint)) {
-			this.fire('click', e);
+			this.fire('click', {
+				latlng: e.latlng,
+				layerPoint: e.layerPoint,
+				containerPoint: e.containerPoint,
+				originalEvent: e
+			});
 		}
-	},
-
-    onRemove: function (map) {
-        map.off('viewreset', this._projectLatlngs, this);
-        map.off(this._updateTrigger, this._updatePath, this);
-        map.fire(this._updateTrigger);
-    }
+	}
 });
 
 L.Map.include((L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? {} : {
 	_initPathRoot: function () {
 		var root = this._pathRoot,
-			ctx;
+		    ctx;
 
 		if (!root) {
 			root = this._pathRoot = document.createElement("canvas");
@@ -124,20 +156,27 @@ L.Map.include((L.Path.SVG && !window.L_PREFER_CANVAS) || !L.Browser.canvas ? {} 
 
 			this._panes.overlayPane.appendChild(root);
 
+			if (this.options.zoomAnimation) {
+				this._pathRoot.className = 'leaflet-zoom-animated';
+				this.on('zoomanim', this._animatePathZoom);
+				this.on('zoomend', this._endPathZoom);
+			}
 			this.on('moveend', this._updateCanvasViewport);
 			this._updateCanvasViewport();
 		}
 	},
 
 	_updateCanvasViewport: function () {
+		// don't redraw while zooming. See _updateSvgViewport for more details
+		if (this._pathZooming) { return; }
 		this._updatePathViewport();
 
 		var vp = this._pathViewport,
-			min = vp.min,
-			size = vp.max.subtract(min),
-			root = this._pathRoot;
+		    min = vp.min,
+		    size = vp.max.subtract(min),
+		    root = this._pathRoot;
 
-		//TODO check if it's works properly on mobile webkit
+		//TODO check if this works properly on mobile webkit
 		L.DomUtil.setPosition(root, min);
 		root.width = size.x;
 		root.height = size.y;

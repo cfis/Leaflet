@@ -1,22 +1,38 @@
 /*
- * L.Handler.MapDrag is used internally by L.Map to make the map draggable.
+ * L.Handler.MapDrag is used to make the map draggable (with panning inertia), enabled by default.
  */
+
+L.Map.mergeOptions({
+	dragging: true,
+
+	inertia: !L.Browser.android23,
+	inertiaDeceleration: 3400, // px/s^2
+	inertiaMaxSpeed: Infinity, // px/s
+	inertiaThreshold: L.Browser.touch ? 32 : 18, // ms
+	easeLinearity: 0.25,
+
+	longPress: true,
+
+	// TODO refactor, move to CRS
+	worldCopyJump: false
+});
 
 L.Map.Drag = L.Handler.extend({
 	addHooks: function () {
 		if (!this._draggable) {
-			this._draggable = new L.Draggable(this._map._mapPane, this._map._container);
+			var map = this._map;
 
-			this._draggable
-				.on('dragstart', this._onDragStart, this)
-				.on('drag', this._onDrag, this)
-				.on('dragend', this._onDragEnd, this);
+			this._draggable = new L.Draggable(map._mapPane, map._container, map.options.longPress);
 
-			var options = this._map.options;
+			this._draggable.on({
+				'dragstart': this._onDragStart,
+				'drag': this._onDrag,
+				'dragend': this._onDragEnd
+			}, this);
 
-			if (options.worldCopyJump && !options.continuousWorld) {
+			if (map.options.worldCopyJump) {
 				this._draggable.on('predrag', this._onPreDrag, this);
-				this._map.on('viewreset', this._onViewReset, this);
+				map.on('viewreset', this._onViewReset, this);
 			}
 		}
 		this._draggable.enable();
@@ -31,45 +47,96 @@ L.Map.Drag = L.Handler.extend({
 	},
 
 	_onDragStart: function () {
-		this._map
-			.fire('movestart')
-			.fire('dragstart');
+		var map = this._map;
+
+		if (map._panAnim) {
+			map._panAnim.stop();
+		}
+
+		map
+		    .fire('movestart')
+		    .fire('dragstart');
+
+		if (map.options.inertia) {
+			this._positions = [];
+			this._times = [];
+		}
 	},
 
 	_onDrag: function () {
+		if (this._map.options.inertia) {
+			var time = this._lastTime = +new Date(),
+			    pos = this._lastPos = this._draggable._newPos;
+
+			this._positions.push(pos);
+			this._times.push(time);
+
+			if (time - this._times[0] > 200) {
+				this._positions.shift();
+				this._times.shift();
+			}
+		}
+
 		this._map
-			.fire('move')
-			.fire('drag');
+		    .fire('move')
+		    .fire('drag');
 	},
 
 	_onViewReset: function () {
-		var pxCenter = this._map.getSize().divideBy(2),
-			pxWorldCenter = this._map.latLngToLayerPoint(new L.LatLng(0, 0));
+		// TODO fix hardcoded Earth values
+		var pxCenter = this._map.getSize()._divideBy(2),
+		    pxWorldCenter = this._map.latLngToLayerPoint(new L.LatLng(0, 0));
 
-		this._initialWorldOffset = pxWorldCenter.subtract(pxCenter);
+		this._initialWorldOffset = pxWorldCenter.subtract(pxCenter).x;
+		this._worldWidth = this._map.project(new L.LatLng(0, 180)).x;
 	},
 
 	_onPreDrag: function () {
-		var map = this._map,
-			worldWidth = map.options.scale(map.getZoom()),
-			halfWidth = Math.round(worldWidth / 2),
-			dx = this._initialWorldOffset.x,
-			x = this._draggable._newPos.x,
-			newX1 = (x - halfWidth + dx) % worldWidth + halfWidth - dx,
-			newX2 = (x + halfWidth + dx) % worldWidth - halfWidth - dx,
-			newX = Math.abs(newX1 + dx) < Math.abs(newX2 + dx) ? newX1 : newX2;
+		// TODO refactor to be able to adjust map pane position after zoom
+		var worldWidth = this._worldWidth,
+		    halfWidth = Math.round(worldWidth / 2),
+		    dx = this._initialWorldOffset,
+		    x = this._draggable._newPos.x,
+		    newX1 = (x - halfWidth + dx) % worldWidth + halfWidth - dx,
+		    newX2 = (x + halfWidth + dx) % worldWidth - halfWidth - dx,
+		    newX = Math.abs(newX1 + dx) < Math.abs(newX2 + dx) ? newX1 : newX2;
 
 		this._draggable._newPos.x = newX;
 	},
 
 	_onDragEnd: function () {
-		var map = this._map;
+		var map = this._map,
+		    options = map.options,
+		    delay = +new Date() - this._lastTime,
 
-		map
-			.fire('moveend')
-			.fire('dragend');
+		    noInertia = !options.inertia || delay > options.inertiaThreshold || !this._positions[0];
 
-		if (map.options.maxBounds) {
+		if (noInertia) {
+			map.fire('moveend');
+
+		} else {
+
+			var direction = this._lastPos.subtract(this._positions[0]),
+			    duration = (this._lastTime + delay - this._times[0]) / 1000,
+			    ease = options.easeLinearity,
+
+			    speedVector = direction.multiplyBy(ease / duration),
+			    speed = speedVector.distanceTo(new L.Point(0, 0)),
+
+			    limitedSpeed = Math.min(options.inertiaMaxSpeed, speed),
+			    limitedSpeedVector = speedVector.multiplyBy(limitedSpeed / speed),
+
+			    decelerationDuration = limitedSpeed / (options.inertiaDeceleration * ease),
+			    offset = limitedSpeedVector.multiplyBy(-decelerationDuration / 2).round();
+
+			L.Util.requestAnimFrame(function () {
+				map.panBy(offset, decelerationDuration, ease);
+			});
+		}
+
+		map.fire('dragend');
+
+		if (options.maxBounds) {
 			// TODO predrag validation instead of animation
 			L.Util.requestAnimFrame(this._panInsideMaxBounds, map, true, map._container);
 		}
@@ -79,3 +146,5 @@ L.Map.Drag = L.Handler.extend({
 		this.panInsideBounds(this.options.maxBounds);
 	}
 });
+
+L.Map.addInitHook('addHandler', 'dragging', L.Map.Drag);

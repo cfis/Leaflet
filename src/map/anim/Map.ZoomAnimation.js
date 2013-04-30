@@ -1,109 +1,142 @@
+/*
+ * Extends L.Map to handle zoom animations.
+ */
+
+L.Map.mergeOptions({
+	zoomAnimation: L.DomUtil.TRANSITION && !L.Browser.android23 && !L.Browser.mobileOpera
+});
+
+if (L.DomUtil.TRANSITION) {
+	L.Map.addInitHook(function () {
+		L.DomEvent.on(this._mapPane, L.DomUtil.TRANSITION_END, this._catchTransitionEnd, this);
+	});
+}
+
 L.Map.include(!L.DomUtil.TRANSITION ? {} : {
-	_zoomToIfCenterInView: function (center, zoom, centerOffset) {
 
-		if (this._animatingZoom) {
-			return true;
-		}
-		if (!this.options.zoomAnimation) {
-			return false;
-		}
+	_zoomToIfClose: function (center, zoom) {
 
-		var zoomDelta = zoom - this._zoom,
-			scale = Math.pow(2, zoomDelta),
-			offset = centerOffset.divideBy(1 - 1 / scale);
+		if (this._animatingZoom) { return true; }
 
-		//if offset does not exceed half of the view
-		if (!this._offsetIsWithinView(offset, 1)) {
-			return false;
-		}
+		if (!this.options.zoomAnimation) { return false; }
 
-		this._mapPane.className += ' leaflet-zoom-anim';
+		var scale = this.getZoomScale(zoom),
+		    offset = this._getCenterOffset(center)._divideBy(1 - 1 / scale);
 
-        this
-			.fire('movestart')
-			.fire('zoomstart');
+		// if offset does not exceed half of the view
+		if (!this._offsetIsWithinView(offset, 1)) { return false; }
 
-		var centerPoint = this.containerPointToLayerPoint(this.getSize().divideBy(2)),
-			origin = centerPoint.add(offset);
+		L.DomUtil.addClass(this._mapPane, 'leaflet-zoom-anim');
+
+		this
+		    .fire('movestart')
+		    .fire('zoomstart');
+
+		this.fire('zoomanim', {
+			center: center,
+			zoom: zoom
+		});
+
+		var origin = this._getCenterLayerPoint().add(offset);
 
 		this._prepareTileBg();
-
 		this._runAnimation(center, zoom, scale, origin);
 
 		return true;
 	},
 
+	_catchTransitionEnd: function () {
+		if (this._animatingZoom) {
+			this._onZoomTransitionEnd();
+		}
+	},
 
-	_runAnimation: function (center, zoom, scale, origin) {
-		this._animatingZoom = true;
-
+	_runAnimation: function (center, zoom, scale, origin, backwardsTransform) {
 		this._animateToCenter = center;
 		this._animateToZoom = zoom;
+		this._animatingZoom = true;
 
-		var transform = L.DomUtil.TRANSFORM;
-
-		//dumb FireFox hack, I have no idea why this magic zero translate fixes the scale transition problem
-		if (L.Browser.gecko || window.opera) {
-			this._tileBg.style[transform] += ' translate(0,0)';
+		if (L.Draggable) {
+			L.Draggable._disabled = true;
 		}
 
-		var scaleStr;
+		var transform = L.DomUtil.TRANSFORM,
+		    tileBg = this._tileBg;
 
-		// Android doesn't like translate/scale chains, transformOrigin + scale works better but
-		// it breaks touch zoom which Anroid doesn't support anyway, so that's a really ugly hack
-		// TODO work around this prettier
-		if (L.Browser.android) {
-			this._tileBg.style[transform + 'Origin'] = origin.x + 'px ' + origin.y + 'px';
-			scaleStr = 'scale(' + scale + ')';
-		} else {
-			scaleStr = L.DomUtil.getScaleString(scale, origin);
-		}
+		clearTimeout(this._clearTileBgTimer);
 
-		L.Util.falseFn(this._tileBg.offsetWidth); //hack to make sure transform is updated before running animation
+		L.Util.falseFn(tileBg.offsetWidth); //hack to make sure transform is updated before running animation
 
-		var options = {};
-		options[transform] = this._tileBg.style[transform] + ' ' + scaleStr;
-		this._tileBg.transition.run(options);
+		var scaleStr = L.DomUtil.getScaleString(scale, origin),
+		    oldTransform = tileBg.style[transform];
+
+		tileBg.style[transform] = backwardsTransform ?
+		        oldTransform + ' ' + scaleStr :
+		        scaleStr + ' ' + oldTransform;
 	},
 
 	_prepareTileBg: function () {
-		if (!this._tileBg) {
-			this._tileBg = this._createPane('leaflet-tile-pane', this._mapPane);
-			this._tileBg.style.zIndex = 1;
+		var tilePane = this._tilePane,
+		    tileBg = this._tileBg;
+
+		// If foreground layer doesn't have many tiles but bg layer does, keep the existing bg layer and just zoom it some more
+		if (tileBg && this._getLoadedTilesPercentage(tileBg) > 0.5 &&
+			          this._getLoadedTilesPercentage(tilePane) < 0.5) {
+
+			tilePane.style.visibility = 'hidden';
+			tilePane.empty = true;
+			this._stopLoadingImages(tilePane);
+			return;
 		}
 
-		var tilePane = this._tilePane,
-			tileBg = this._tileBg;
+		if (!tileBg) {
+			tileBg = this._tileBg = this._createPane('leaflet-tile-pane', this._mapPane);
+			tileBg.style.zIndex = 1;
+		}
 
 		// prepare the background pane to become the main tile pane
-		//tileBg.innerHTML = '';
 		tileBg.style[L.DomUtil.TRANSFORM] = '';
 		tileBg.style.visibility = 'hidden';
 
 		// tells tile layers to reinitialize their containers
-		tileBg.empty = true;
-		tilePane.empty = false;
+		tileBg.empty = true; //new FG
+		tilePane.empty = false; //new BG
 
+		//Switch out the current layer to be the new bg layer (And vice-versa)
 		this._tilePane = this._panes.tilePane = tileBg;
-		this._tileBg = tilePane;
+		var newTileBg = this._tileBg = tilePane;
 
-		if (!this._tileBg.transition) {
-			this._tileBg.transition = new L.Transition(this._tileBg, {duration: 0.3, easing: 'cubic-bezier(0.25,0.1,0.25,0.75)'});
-			this._tileBg.transition.on('end', this._onZoomTransitionEnd, this);
+		L.DomUtil.addClass(newTileBg, 'leaflet-zoom-animated');
+
+		this._stopLoadingImages(newTileBg);
+	},
+
+	_getLoadedTilesPercentage: function (container) {
+		var tiles = container.getElementsByTagName('img'),
+		    i, len, count = 0;
+
+		for (i = 0, len = tiles.length; i < len; i++) {
+			if (tiles[i].complete) {
+				count++;
+			}
 		}
-
-		this._stopLoadingBgTiles();
+		return count / len;
 	},
 
 	// stops loading all tiles in the background layer
-	_stopLoadingBgTiles: function () {
-		var tiles = [].slice.call(this._tileBg.getElementsByTagName('img'));
+	_stopLoadingImages: function (container) {
+		var tiles = Array.prototype.slice.call(container.getElementsByTagName('img')),
+		    i, len, tile;
 
-		for (var i = 0, len = tiles.length; i < len; i++) {
-			if (!tiles[i].complete) {
-				// tiles[i].src = '' - evil, doesn't cancel the request!
-				tiles[i].parentNode.removeChild(tiles[i]);
-				tiles[i] = null;
+		for (i = 0, len = tiles.length; i < len; i++) {
+			tile = tiles[i];
+
+			if (!tile.complete) {
+				tile.onload = L.Util.falseFn;
+				tile.onerror = L.Util.falseFn;
+				tile.src = L.Util.emptyImageUrl;
+
+				tile.parentNode.removeChild(tile);
 			}
 		}
 	},
@@ -111,11 +144,14 @@ L.Map.include(!L.DomUtil.TRANSITION ? {} : {
 	_onZoomTransitionEnd: function () {
 		this._restoreTileFront();
 
-		L.Util.falseFn(this._tileBg.offsetWidth);
+		L.DomUtil.removeClass(this._mapPane, 'leaflet-zoom-anim');
+		L.Util.falseFn(this._tileBg.offsetWidth); // force reflow
+		this._animatingZoom = false;
 		this._resetView(this._animateToCenter, this._animateToZoom, true, true);
 
-		this._mapPane.className = this._mapPane.className.replace(' leaflet-zoom-anim', ''); //TODO toggleClass util
-		this._animatingZoom = false;
+		if (L.Draggable) {
+			L.Draggable._disabled = false;
+		}
 	},
 
 	_restoreTileFront: function () {

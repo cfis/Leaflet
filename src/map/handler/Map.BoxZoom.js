@@ -1,6 +1,11 @@
 /*
- * L.Handler.ShiftDragZoom is used internally by L.Map to add shift-drag zoom (zoom to a selected bounding box).
+ * L.Handler.ShiftDragZoom is used to add shift-drag zoom interaction to the map
+  * (zoom to a selected bounding box), enabled by default.
  */
+
+L.Map.mergeOptions({
+	boxZoom: true
+});
 
 L.Map.BoxZoom = L.Handler.extend({
 	initialize: function (map) {
@@ -10,17 +15,15 @@ L.Map.BoxZoom = L.Handler.extend({
 	},
 
 	addHooks: function () {
-		L.DomEvent.addListener(this._container, 'mousedown', this._onMouseDown, this);
+		L.DomEvent.on(this._container, 'mousedown', this._onMouseDown, this);
 	},
 
 	removeHooks: function () {
-		L.DomEvent.removeListener(this._container, 'mousedown', this._onMouseDown);
+		L.DomEvent.off(this._container, 'mousedown', this._onMouseDown);
 	},
 
 	_onMouseDown: function (e) {
-		if (!e.shiftKey || ((e.which !== 1) && (e.button !== 1))) {
-			return false;
-		}
+		if (!e.shiftKey || ((e.which !== 1) && (e.button !== 1))) { return false; }
 
 		L.DomUtil.disableTextSelection();
 
@@ -29,28 +32,33 @@ L.Map.BoxZoom = L.Handler.extend({
 		this._box = L.DomUtil.create('div', 'leaflet-zoom-box', this._pane);
 		L.DomUtil.setPosition(this._box, this._startLayerPoint);
 
-		//TODO move cursor to styles
+		//TODO refactor: move cursor to styles
 		this._container.style.cursor = 'crosshair';
 
-		L.DomEvent.addListener(document, 'mousemove', this._onMouseMove, this);
-		L.DomEvent.addListener(document, 'mouseup', this._onMouseUp, this);
+		L.DomEvent
+		    .on(document, 'mousemove', this._onMouseMove, this)
+		    .on(document, 'mouseup', this._onMouseUp, this)
+		    .preventDefault(e);
 
-		L.DomEvent.preventDefault(e);
+		this._map.fire("boxzoomstart");
 	},
 
 	_onMouseMove: function (e) {
-		var layerPoint = this._map.mouseEventToLayerPoint(e),
-			dx = layerPoint.x - this._startLayerPoint.x,
-			dy = layerPoint.y - this._startLayerPoint.y;
+		var startPoint = this._startLayerPoint,
+		    box = this._box,
 
-		var newX = Math.min(layerPoint.x, this._startLayerPoint.x),
-			newY = Math.min(layerPoint.y, this._startLayerPoint.y),
-			newPos = new L.Point(newX, newY);
+		    layerPoint = this._map.mouseEventToLayerPoint(e),
+		    offset = layerPoint.subtract(startPoint),
 
-		L.DomUtil.setPosition(this._box, newPos);
+		    newPos = new L.Point(
+		        Math.min(layerPoint.x, startPoint.x),
+		        Math.min(layerPoint.y, startPoint.y));
 
-		this._box.style.width = (Math.abs(dx) - 4) + 'px';
-		this._box.style.height = (Math.abs(dy) - 4) + 'px';
+		L.DomUtil.setPosition(box, newPos);
+
+		// TODO refactor: remove hardcoded 4 pixels
+		box.style.width  = (Math.max(0, Math.abs(offset.x) - 4)) + 'px';
+		box.style.height = (Math.max(0, Math.abs(offset.y) - 4)) + 'px';
 	},
 
 	_onMouseUp: function (e) {
@@ -59,15 +67,25 @@ L.Map.BoxZoom = L.Handler.extend({
 
 		L.DomUtil.enableTextSelection();
 
-		L.DomEvent.removeListener(document, 'mousemove', this._onMouseMove);
-		L.DomEvent.removeListener(document, 'mouseup', this._onMouseUp);
+		L.DomEvent
+		    .off(document, 'mousemove', this._onMouseMove)
+		    .off(document, 'mouseup', this._onMouseUp);
 
-		var layerPoint = this._map.mouseEventToLayerPoint(e);
+		var map = this._map,
+		    layerPoint = map.mouseEventToLayerPoint(e);
+
+		if (this._startLayerPoint.equals(layerPoint)) { return; }
 
 		var bounds = new L.LatLngBounds(
-				this._map.layerPointToLatLng(this._startLayerPoint),
-				this._map.layerPointToLatLng(layerPoint));
+		        map.layerPointToLatLng(this._startLayerPoint),
+		        map.layerPointToLatLng(layerPoint));
 
-		this._map.fitBounds(bounds);
+		map.fitBounds(bounds);
+
+		map.fire("boxzoomend", {
+			boxZoomBounds: bounds
+		});
 	}
 });
+
+L.Map.addInitHook('addHandler', 'boxZoom', L.Map.BoxZoom);

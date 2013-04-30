@@ -1,11 +1,13 @@
 /*
- * Popup extension to L.Marker, adding openPopup & bindPopup methods.
+ * Popup extension to L.Marker, adding popup-related methods.
  */
 
 L.Marker.include({
 	openPopup: function () {
-		this._popup.setLatLng(this._latlng);
-		this._map.openPopup(this._popup);
+		if (this._popup && this._map) {
+			this._popup.setLatLng(this._latlng);
+			this._map.openPopup(this._popup);
+		}
 
 		return this;
 	},
@@ -18,14 +20,25 @@ L.Marker.include({
 	},
 
 	bindPopup: function (content, options) {
-		options = L.Util.extend({offset: this.options.icon.popupAnchor}, options);
+		var anchor = L.point(this.options.icon.options.popupAnchor) || new L.Point(0, 0);
 
-		if (!this._popup) {
-			this.on('click', this.openPopup, this);
+		anchor = anchor.add(L.Popup.prototype.options.offset);
+
+		if (options && options.offset) {
+			anchor = anchor.add(options.offset);
 		}
 
-		this._popup = new L.Popup(options, this);
-		this._popup.setContent(content);
+		options = L.extend({offset: anchor}, options);
+
+		if (!this._popup) {
+			this
+			    .on('click', this.openPopup, this)
+			    .on('remove', this.closePopup, this)
+			    .on('move', this._movePopup, this);
+		}
+
+		this._popup = new L.Popup(options, this)
+			.setContent(content);
 
 		return this;
 	},
@@ -33,8 +46,15 @@ L.Marker.include({
 	unbindPopup: function () {
 		if (this._popup) {
 			this._popup = null;
-			this.off('click', this.openPopup);
+			this
+			    .off('click', this.openPopup)
+			    .off('remove', this.closePopup)
+			    .off('move', this._movePopup);
 		}
 		return this;
+	},
+
+	_movePopup: function (e) {
+		this._popup.setLatLng(e.latlng);
 	}
 });
